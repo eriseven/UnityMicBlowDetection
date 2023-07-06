@@ -117,6 +117,20 @@
       },
       "url": "https://packages.unity.com"
     },
+    "com.yasirkula.ingamedebugconsole": {
+      "version": "https://github.com/yasirkula/UnityIngameDebugConsole.git",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "28921b1aa6aa90b5b4715d79be895cc4287607b5"
+    },
+    "com.yasirkula.runtimeinspector": {
+      "version": "https://github.com/yasirkula/UnityRuntimeInspector.git",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "8d939340e0a0802bfaf9cefd7d3a79328f89a503"
+    },
     "com.unity.modules.ai": {
       "version": "1.0.0",
       "depth": 0,
