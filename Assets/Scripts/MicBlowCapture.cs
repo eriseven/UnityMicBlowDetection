@@ -86,7 +86,6 @@ public class MicBlowCapture : MonoBehaviour
         {
             Debug.LogException(e);
         }
-        
     }
 
     static void SaveSampleData(float[] data, string fileName)
@@ -117,7 +116,6 @@ public class MicBlowCapture : MonoBehaviour
             Debug.LogException(e);
             return Array.Empty<float>();
         }
-        
     }
 
     IEnumerator Capture(Action<bool> callback, bool record = false)
@@ -162,12 +160,21 @@ public class MicBlowCapture : MonoBehaviour
 
 
         _accumulator = new Accumulator(spectrumSamples.Length);
+        int detectMatchCount = 0;
+        bool blowDetected = false;
         while (Microphone.IsRecording(null))
         {
             UpdateCaptureData();
 
+            if (DetectBlow())
+            {
+                detectMatchCount++;
+            }
+
+            blowDetected = detectMatchCount >= varReferenceMatchCount;
+
             yield return null;
-            if (!isCapturing)
+            if (blowDetected || !isCapturing)
             {
                 Microphone.End(null);
                 break;
@@ -176,7 +183,7 @@ public class MicBlowCapture : MonoBehaviour
 
         isCapturing = false;
         goAudioSource.Stop();
-        
+
         if (record)
         {
             referenceSamples = spectrumSamples.ToArray();
@@ -185,7 +192,7 @@ public class MicBlowCapture : MonoBehaviour
         }
 
         yield return null;
-        callback?.Invoke(true);
+        callback?.Invoke(blowDetected);
     }
 
     [SerializeField] [Range(32, 16384)] private int sampleSize = 2048;
@@ -211,7 +218,7 @@ public class MicBlowCapture : MonoBehaviour
     }
 
     [SerializeField] private SimpleSpectrumDataRender renderer;
-    
+
     [SerializeField] private SimpleSpectrumDataRender recordedRenderer;
 
     class Accumulator
@@ -286,4 +293,24 @@ public class MicBlowCapture : MonoBehaviour
         }
     }
 
+    [SerializeField, Range(0, 100)] private float varReference = 0;
+
+    [SerializeField, Range(0, 20)] private int varReferenceMatchCount = 1;
+
+    bool DetectBlow()
+    {
+        if (spectrumSamples != null && referenceSamples != null && spectrumSamples.Length == referenceSamples.Length)
+        {
+            for (int i = 0; i < spectrumSamples.Length; i++)
+            {
+                tempSamples[i] = spectrumSamples[i] - referenceSamples[i];
+            }
+
+            var m = tempSamples.Sum() / tempSamples.Length;
+            var v = tempSamples.Select(f => Mathf.Pow(f - m, 2)).Sum() / tempSamples.Length;
+            return v <= varReference;
+        }
+
+        return false;
+    }
 }
