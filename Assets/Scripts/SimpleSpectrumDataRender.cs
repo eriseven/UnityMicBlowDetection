@@ -63,6 +63,8 @@ namespace UnityMicBlowDetection
                 _lineRenderer.endWidth = 0.02f;
 
                 var with = _lineRenderer.GetComponent<RectTransform>().sizeDelta.x;
+                // var with = _lineRenderer.GetComponent<RectTransform>().anchorMax.x -
+                //            _lineRenderer.GetComponent<RectTransform>().anchorMin.x;
                 // with *= 0.5f;
                 
                 for (int i = 0; i < displayResolution; i++)

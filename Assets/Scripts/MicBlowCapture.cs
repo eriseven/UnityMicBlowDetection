@@ -1,6 +1,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using NaughtyAttributes;
 using UnityEngine;
 using UnityEngine.Audio;
 using UnityMicBlowDetection;
@@ -20,8 +24,7 @@ public class MicBlowCapture : MonoBehaviour
     private AudioMixerGroup silenceGroup;
     [SerializeField] private int captureTimeLength = 20;
 
-    [SerializeField]
-    private bool keepSilence = true;
+    [SerializeField] private bool keepSilence = true;
 
     // Start is called before the first frame update
     void Start()
@@ -52,12 +55,12 @@ public class MicBlowCapture : MonoBehaviour
 
     private bool isCapturing = false;
 
-    public void StartCapture(Action<bool> callback)
+    public void StartCapture(Action<bool> callback, bool record = false)
     {
         if (!isCapturing)
         {
             Debug.Log("StartCapture");
-            StartCoroutine(Capture(callback));
+            StartCoroutine(Capture(callback, record));
         }
         else
         {
@@ -71,7 +74,53 @@ public class MicBlowCapture : MonoBehaviour
         isCapturing = false;
     }
 
-    IEnumerator Capture(Action<bool> callback)
+    [Button]
+    public void LoadReference()
+    {
+        try
+        {
+            referenceSamples = LoadSampleData("lastDumpData.data");
+            recordedRenderer?.Draw(referenceSamples);
+        }
+        catch (Exception e)
+        {
+            Debug.LogException(e);
+        }
+        
+    }
+
+    static void SaveSampleData(float[] data, string fileName)
+    {
+        if (data == null || data.Length == 0)
+        {
+            return;
+        }
+
+        var savePath = Path.Combine(Application.persistentDataPath, fileName);
+        if (File.Exists(savePath))
+        {
+            File.Delete(savePath);
+        }
+
+        File.WriteAllText(savePath, JsonUtility.ToJson(data), Encoding.UTF8);
+    }
+
+    static float[] LoadSampleData(string fileName)
+    {
+        try
+        {
+            var content = File.ReadAllText(Path.Combine(Application.persistentDataPath, fileName), Encoding.UTF8);
+            return JsonUtility.FromJson<float[]>(content);
+        }
+        catch (Exception e)
+        {
+            Debug.LogException(e);
+            return Array.Empty<float>();
+        }
+        
+    }
+
+    IEnumerator Capture(Action<bool> callback, bool record = false)
     {
         if (!micConnected)
         {
@@ -112,6 +161,7 @@ public class MicBlowCapture : MonoBehaviour
         yield return null;
 
 
+        _accumulator = new Accumulator(spectrumSamples.Length);
         while (Microphone.IsRecording(null))
         {
             UpdateCaptureData();
@@ -124,17 +174,27 @@ public class MicBlowCapture : MonoBehaviour
             }
         }
 
-
         isCapturing = false;
         goAudioSource.Stop();
+        
+        if (record)
+        {
+            referenceSamples = spectrumSamples.ToArray();
+            SaveSampleData(referenceSamples, "lastDumpData.data");
+            recordedRenderer?.Draw(referenceSamples);
+        }
 
         yield return null;
         callback?.Invoke(true);
     }
 
     [SerializeField] [Range(32, 16384)] private int sampleSize = 2048;
+
     private float[] spectrumSamples;
     private float[] tempSamples;
+
+    [SerializeField, HideInInspector] private float[] referenceSamples;
+    public float[] ReferenceSamples => referenceSamples.ToArray();
 
     void SetupSamplesBuffer()
     {
@@ -143,19 +203,28 @@ public class MicBlowCapture : MonoBehaviour
             spectrumSamples = new float[sampleSize];
             tempSamples = new float[sampleSize];
         }
+
+        if (referenceSamples == null || referenceSamples.Length != sampleSize)
+        {
+            referenceSamples = new float[sampleSize];
+        }
     }
 
     [SerializeField] private SimpleSpectrumDataRender renderer;
+    
+    [SerializeField] private SimpleSpectrumDataRender recordedRenderer;
 
     class Accumulator
     {
         private float[] meanVector;
+
         public Accumulator(int vectorSize)
         {
-            meanVector = new[] { 0.0f };
+            meanVector = new float[vectorSize];
         }
-        
+
         private float m;
+
         // private float s;
         private int N;
 
@@ -176,18 +245,18 @@ public class MicBlowCapture : MonoBehaviour
                 meanVector[i] = meanVector[i] + (vec[i] - meanVector[i]) / N;
                 // m = m + (x - m) / N;
             }
-            
+
             return meanVector;
         }
-        
-        
+
+
         // public void addDateValue(float x)
         // {
         //     N++;
         //     s = s + 1.0f * (N - 1) / N * (x - m) * (x - m);
         //     m = m + (x - m) / N;
         // }
-        
+
         public float mean()
         {
             return m;
@@ -195,11 +264,11 @@ public class MicBlowCapture : MonoBehaviour
     }
 
     private Accumulator _accumulator;
-    
+
     void UpdateCaptureData()
     {
         SetupSamplesBuffer();
-        
+
         if (_accumulator == null)
         {
             goAudioSource.GetSpectrumData(spectrumSamples, 0, FFTWindow.BlackmanHarris);
@@ -217,8 +286,4 @@ public class MicBlowCapture : MonoBehaviour
         }
     }
 
-    // Update is called once per frame
-    void Update()
-    {
-    }
 }
