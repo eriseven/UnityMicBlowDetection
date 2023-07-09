@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using NaughtyAttributes;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Audio;
 using UnityMicBlowDetection;
@@ -118,6 +119,9 @@ public class MicBlowCapture : MonoBehaviour
         }
     }
 
+    [SerializeField]
+    private TextMeshProUGUI detectMatchCountText;
+    
     IEnumerator Capture(Action<bool> callback, bool record = false)
     {
         if (!micConnected)
@@ -159,19 +163,48 @@ public class MicBlowCapture : MonoBehaviour
         yield return null;
 
 
-        _accumulator = new Accumulator(spectrumSamples.Length);
+        if (record)
+        {
+            _accumulator = new Accumulator(spectrumSamples.Length);
+        }
+        else
+        {
+            _accumulator = null;
+        }
+        
         int detectMatchCount = 0;
         bool blowDetected = false;
+        
+        if (detectMatchCountText != null)
+        {
+            detectMatchCountText.text = "";
+        }
+        
+        if (varianceText != null)
+        {
+            varianceText.text = "";
+        }
+
         while (Microphone.IsRecording(null))
         {
             UpdateCaptureData();
 
-            if (DetectBlow())
+            if (!record)
             {
-                detectMatchCount++;
+                if (DetectBlow())
+                {
+                    detectMatchCount++;
+                }
+
+                if (detectMatchCountText != null)
+                {
+                    detectMatchCountText.text = detectMatchCount.ToString();
+                }
+
+                Debug.Log($"detectMatchCount: {detectMatchCount}");
+                blowDetected = detectMatchCount >= varReferenceMatchCount;               
             }
 
-            blowDetected = detectMatchCount >= varReferenceMatchCount;
 
             yield return null;
             if (blowDetected || !isCapturing)
@@ -193,6 +226,8 @@ public class MicBlowCapture : MonoBehaviour
 
         yield return null;
         callback?.Invoke(blowDetected);
+        
+
     }
 
     [SerializeField] [Range(32, 16384)] private int sampleSize = 2048;
@@ -297,6 +332,9 @@ public class MicBlowCapture : MonoBehaviour
 
     [SerializeField, Range(0, 20)] private int varReferenceMatchCount = 1;
 
+    [SerializeField]
+    private TextMeshProUGUI varianceText;
+    
     bool DetectBlow()
     {
         if (spectrumSamples != null && referenceSamples != null && spectrumSamples.Length == referenceSamples.Length)
@@ -307,7 +345,14 @@ public class MicBlowCapture : MonoBehaviour
             }
 
             var m = tempSamples.Sum() / tempSamples.Length;
-            var v = tempSamples.Select(f => Mathf.Pow(f - m, 2)).Sum() / tempSamples.Length;
+            // var v = tempSamples.Select(f => Mathf.Pow(f - m, 2)).Sum() / tempSamples.Length;
+            var v = tempSamples.Select(f => (f-m)*(f-m)).Sum() / tempSamples.Length;
+            v *= 1000000;
+            Debug.Log($"variance: {v:R}");
+            if (varianceText != null)
+            {
+                varianceText.text = v.ToString("R");
+            }
             return v <= varReference;
         }
 
