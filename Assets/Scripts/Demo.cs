@@ -8,103 +8,105 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
 
-public class Demo : MonoBehaviour
+namespace UnityMicBlowDetection
 {
-    [SerializeField] private MicBlowCapture capture;
-
-    [SerializeField] private CaptureButton captureButton;
-
-    [SerializeField] private CaptureButton recordButton;
-
-    [SerializeField] private Button startButton;
-
-    [SerializeField] private Button stopButton;
-
-    [SerializeField] private TextMeshProUGUI state;
-
-    // Start is called before the first frame update
-    void Start()
+    public class Demo : MonoBehaviour
     {
-        // (startButton != null ? startButton.onClick : null).AddListener(() => { capture?.StartCapture(OnCaptureFinish); });
-        //
-        // (stopButton != null ? stopButton.onClick : null).AddListener(() => { capture?.StopCapture(); });       
+        [SerializeField] private MicBlowCapture capture;
 
-        if (captureButton != null)
+        [SerializeField] private CaptureButton captureButton;
+
+        [SerializeField] private CaptureButton recordButton;
+
+        [SerializeField] private Button startButton;
+
+        [SerializeField] private Button stopButton;
+
+        [SerializeField] private TextMeshProUGUI state;
+
+        // Start is called before the first frame update
+        void Start()
         {
-            captureButton.onPress += () =>
-            {
-                if (state != null)
-                {
-                    state.text = "Capturing...";
-                }
+            // (startButton != null ? startButton.onClick : null).AddListener(() => { capture?.StartCapture(OnCaptureFinish); });
+            //
+            // (stopButton != null ? stopButton.onClick : null).AddListener(() => { capture?.StopCapture(); });       
 
-                capture?.StartCapture(OnCaptureFinish);
-            };
-            captureButton.onRelease += () =>
+            if (captureButton != null)
             {
-                capture?.StopCapture();
-                if (state != null)
+                captureButton.onPress += () =>
                 {
-                    state.text = "";
-                }
-            };
+                    if (state != null)
+                    {
+                        state.text = "Capturing...";
+                    }
+
+                    capture?.StartCapture(OnCaptureFinish);
+                };
+                captureButton.onRelease += () =>
+                {
+                    capture?.StopCapture();
+                    if (state != null)
+                    {
+                        state.text = "";
+                    }
+                };
+            }
+
+            if (recordButton != null)
+            {
+                recordButton.onPress += () =>
+                {
+                    if (state != null)
+                    {
+                        state.text = "Recording...";
+                    }
+
+                    capture?.StartCapture(OnCaptureFinish, true);
+                };
+                recordButton.onRelease += () =>
+                {
+                    capture?.StopCapture();
+                    if (state != null)
+                    {
+                        state.text = "";
+                    }
+                };
+            }
         }
 
-        if (recordButton != null)
+        void OnCaptureFinish(string result)
         {
-            recordButton.onPress += () =>
+            Debug.Log($"OnCaptureFinish {result}");
+        }
+
+        private void Awake()
+        {
+            DebugLogConsole.AddCommand("show-ins", "show inspector", _ShowInspector);
+            DebugLogConsole.AddCommand("hide-ins", "hide inspector", _HideInspector);
+            if (capture != null)
             {
-                if (state != null)
-                {
-                    state.text = "Recording...";
-                }
+                DebugLogConsole.AddCommand("load", "load saved samples", capture.LoadReference);
+            }
+        }
 
-                capture?.StartCapture(OnCaptureFinish, true);
-            };
-            recordButton.onRelease += () =>
+        [SerializeField] private RuntimeInspector inspector;
+
+        void _ShowInspector()
+        {
+            if (inspector != null)
             {
-                capture?.StopCapture();
-                if (state != null)
-                {
-                    state.text = "";
-                }
-            };
+                inspector.gameObject.SetActive(true);
+                inspector.Inspect(capture);
+            }
         }
-    }
 
-    void OnCaptureFinish(string result)
-    {
-        Debug.Log($"OnCaptureFinish {result}");
-    }
-
-    private void Awake()
-    {
-        DebugLogConsole.AddCommand("show-ins", "show inspector", _ShowInspector);
-        DebugLogConsole.AddCommand("hide-ins", "hide inspector", _HideInspector);
-        if (capture != null)
+        void _HideInspector()
         {
-            DebugLogConsole.AddCommand("load", "load saved samples", capture.LoadReference);
-        }
-    }
-
-    [SerializeField]
-    private RuntimeInspector inspector;
-    
-    void _ShowInspector()
-    {
-        if (inspector != null)
-        {
-            inspector.gameObject.SetActive(true);
-            inspector.Inspect(capture);
-        }
-    }
-    
-    void _HideInspector()
-    {
-        if (inspector != null)
-        {
-            inspector.StopInspect();
-            inspector.gameObject.SetActive(false);
+            if (inspector != null)
+            {
+                inspector.StopInspect();
+                inspector.gameObject.SetActive(false);
+            }
         }
     }
 }

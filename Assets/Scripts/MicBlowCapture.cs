@@ -3,7 +3,14 @@ using System.Collections;
 using System.IO;
 using System.Linq;
 using System.Text;
+
+#if ODIN_INSPECTOR
+using Sirenix.OdinInspector;
+#else
 using NaughtyAttributes;
+#endif
+
+
 using TMPro;
 using UnityEngine;
 using UnityEngine.Audio;
