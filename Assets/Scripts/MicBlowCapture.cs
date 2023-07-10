@@ -31,8 +31,10 @@ public class MicBlowCapture : MonoBehaviour
     [SerializeField] private bool keepSilence = true;
 
     // Start is called before the first frame update
-    void Start()
+    void _Start()
     {
+        if (micConnected) { return; }
+        
         if (Microphone.devices.Length <= 0)
         {
             //Throw a warning message at the console if there isn't    
@@ -134,7 +136,7 @@ public class MicBlowCapture : MonoBehaviour
     }
 
 #if UNITY_ANDROID
-    IEnumerator RequestAndroidPermission()
+    IEnumerator RequestAndroidPermission(Action<string> callback)
     {
         CaptureStat stat = CaptureStat.None;
         
@@ -145,14 +147,58 @@ public class MicBlowCapture : MonoBehaviour
         
         Permission.RequestUserPermission(Permission.Microphone, callbacks);
         while (stat == CaptureStat.None) { yield return null; }
+        callback?.Invoke(stat.ToString());
     }
 #endif
+
+    
+    public bool HasPermission()
+    {
+#if UNITY_IOS || UNITY_EDITOR_OSX
+        return Application.HasUserAuthorization(UserAuthorization.Microphone);
+#elif UNITY_ANDROID
+        return Permission.HasUserAuthorizedPermission(Permission.Microphone);
+#else
+        return true;
+#endif
+    }
+
+    #if UNITY_IOS || UNITY_EDITOR_OSX
+    IEnumerator RequestIOSPermission(Action<string> callback)
+    {
+        if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
+        {
+            yield return Application.RequestUserAuthorization(UserAuthorization.Microphone);
+        }
+
+        if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
+        {
+            callback?.Invoke(CaptureStat.PermissionDenied.ToString());
+        }
+        else
+        {
+            callback?.Invoke(CaptureStat.PermissionGranted.ToString());
+        }
+    }
+    #endif
+
+    public void RequestMiroPhonePermission(Action<string> callback)
+    {
+#if UNITY_IOS || UNITY_EDITOR_OSX
+        StartCoroutine(RequestIOSPermission(callback));
+#elif UNITY_ANDROID
+        StartCoroutine(RequestAndroidPermission(callback));
+#else
+        callback?.Invoke(CaptureStat.PermissionGranted.ToString());
+#endif
+    }
     
     [SerializeField]
     private TextMeshProUGUI detectMatchCountText;
     
     IEnumerator Capture(Action<string> callback, bool record = false)
     {
+        _Start();
         if (!micConnected)
         {
             callback?.Invoke(CaptureStat.CanNotFindMicroPhone.ToString());
@@ -180,7 +226,7 @@ public class MicBlowCapture : MonoBehaviour
 #if UNITY_ANDROID
         if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
         {
-            yield return RequestAndroidPermission();
+            yield return RequestAndroidPermission(null);
         }
 
         if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
