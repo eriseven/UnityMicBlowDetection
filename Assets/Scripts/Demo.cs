@@ -1,5 +1,8 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using IngameDebugConsole;
+using RuntimeInspectorNamespace;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
@@ -69,9 +72,35 @@ public class Demo : MonoBehaviour
         }
     }
 
-    void OnCaptureFinish(bool result)
+    void OnCaptureFinish(string result)
     {
         Debug.Log($"OnCaptureFinish {result}");
     }
 
+    private void Awake()
+    {
+        DebugLogConsole.AddCommand("show-ins", "show inspector", _ShowInspector);
+        DebugLogConsole.AddCommand("hide-ins", "hide inspector", _HideInspector);
+    }
+
+    [SerializeField]
+    private RuntimeInspector inspector;
+    
+    void _ShowInspector()
+    {
+        if (inspector != null)
+        {
+            inspector.gameObject.SetActive(true);
+            inspector.Inspect(capture);
+        }
+    }
+    
+    void _HideInspector()
+    {
+        if (inspector != null)
+        {
+            inspector.StopInspect();
+            inspector.gameObject.SetActive(false);
+        }
+    }
 }

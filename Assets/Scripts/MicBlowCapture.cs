@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -9,6 +8,10 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.Audio;
 using UnityMicBlowDetection;
+
+#if UNITY_ANDROID
+using UnityEngine.Android;
+#endif
 
 [RequireComponent(typeof(AudioSource))]
 public class MicBlowCapture : MonoBehaviour
@@ -55,8 +58,19 @@ public class MicBlowCapture : MonoBehaviour
     }
 
     private bool isCapturing = false;
+    public enum CaptureStat
+    {
+        None,
+        MicBlowDetected,
+        CanNotFindMicroPhone,
+        MicroPhoneIsBusy,
+        AudioSourceMissing,
+        PermissionDenied,
+        PermissionGranted,
+        PermissionDeniedAndDontAskAgain,
+    }
 
-    public void StartCapture(Action<bool> callback, bool record = false)
+    public void StartCapture(Action<string> callback, bool record = false)
     {
         if (!isCapturing)
         {
@@ -119,26 +133,75 @@ public class MicBlowCapture : MonoBehaviour
         }
     }
 
+#if UNITY_ANDROID
+    IEnumerator RequestAndroidPermission()
+    {
+        CaptureStat stat = CaptureStat.None;
+        
+        var callbacks = new PermissionCallbacks();
+        callbacks.PermissionDenied += s => { stat = CaptureStat.PermissionDenied; };
+        callbacks.PermissionGranted += s => { stat = CaptureStat.PermissionGranted; };
+        callbacks.PermissionDeniedAndDontAskAgain += s => { stat = CaptureStat.PermissionDeniedAndDontAskAgain; };
+        
+        Permission.RequestUserPermission(Permission.Microphone, callbacks);
+        while (stat == CaptureStat.None) { yield return null; }
+    }
+#endif
+    
     [SerializeField]
     private TextMeshProUGUI detectMatchCountText;
     
-    IEnumerator Capture(Action<bool> callback, bool record = false)
+    IEnumerator Capture(Action<string> callback, bool record = false)
     {
         if (!micConnected)
         {
-            callback?.Invoke(false);
+            callback?.Invoke(CaptureStat.CanNotFindMicroPhone.ToString());
             yield break;
         }
 
+        // Request Permission
+        #region iOS
+
+#if UNITY_IOS
+        if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
+        {
+            yield return Application.RequestUserAuthorization(UserAuthorization.Microphone);
+        }
+
+        if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
+        {
+            callback?.Invoke(CaptureStat.PermissionDenied.ToString());
+            yield break;
+        }
+#endif 
+        #endregion
+
+        #region Android
+#if UNITY_ANDROID
+        if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
+        {
+            yield return RequestAndroidPermission();
+        }
+
+        if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
+        {
+             callback?.Invoke(CaptureStat.PermissionDenied.ToString());
+             yield break;           
+        }
+#endif    
+        #endregion
+        
+        
+
         if (Microphone.IsRecording(null))
         {
-            callback?.Invoke(false);
+            callback?.Invoke(CaptureStat.MicroPhoneIsBusy.ToString());
             yield break;
         }
 
         if (goAudioSource == null)
         {
-            callback?.Invoke(false);
+            callback?.Invoke(CaptureStat.AudioSourceMissing.ToString());
             yield break;
         }
 
@@ -165,7 +228,7 @@ public class MicBlowCapture : MonoBehaviour
 
         if (record)
         {
-            _accumulator = new Accumulator(spectrumSamples.Length);
+            // _accumulator = new Accumulator(spectrumSamples.Length);
         }
         else
         {
@@ -225,9 +288,7 @@ public class MicBlowCapture : MonoBehaviour
         }
 
         yield return null;
-        callback?.Invoke(blowDetected);
-        
-
+        callback?.Invoke(blowDetected ? CaptureStat.MicBlowDetected.ToString() : CaptureStat.None.ToString());
     }
 
     [SerializeField] [Range(32, 16384)] private int sampleSize = 2048;
