@@ -81,6 +81,10 @@ public class Demo : MonoBehaviour
     {
         DebugLogConsole.AddCommand("show-ins", "show inspector", _ShowInspector);
         DebugLogConsole.AddCommand("hide-ins", "hide inspector", _HideInspector);
+        if (capture != null)
+        {
+            DebugLogConsole.AddCommand("load", "load saved samples", capture.LoadReference);
+        }
     }
 
     [SerializeField]

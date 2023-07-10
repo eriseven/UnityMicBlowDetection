@@ -16,6 +16,18 @@ using UnityEngine.Android;
 [RequireComponent(typeof(AudioSource))]
 public class MicBlowCapture : MonoBehaviour
 {
+    public enum CaptureStat
+    {
+        None,
+        MicBlowDetected,
+        CanNotFindMicroPhone,
+        MicroPhoneIsBusy,
+        AudioSourceMissing,
+        PermissionDenied,
+        PermissionGranted,
+        PermissionDeniedAndDontAskAgain,
+    }
+
     // Boolean flags shows if the microphone is connected   
     private bool micConnected = false;
 
@@ -30,11 +42,105 @@ public class MicBlowCapture : MonoBehaviour
 
     [SerializeField] private bool keepSilence = true;
 
-    // Start is called before the first frame update
-    void _Start()
+    private bool isCapturing = false;
+
+    #region Public Methods
+
+    public void StartCapture(Action<string> callback, bool record = false)
     {
-        if (micConnected) { return; }
-        
+        if (!isCapturing)
+        {
+            Debug.Log("StartCapture");
+            StartCoroutine(Capture(callback, record));
+        }
+        else
+        {
+            Debug.LogWarning("Is isCapturing...");
+        }
+    }
+
+    public void StopCapture()
+    {
+        Debug.Log("StopCapture");
+        isCapturing = false;
+    }
+
+    public bool HasPermission()
+    {
+#if UNITY_IOS || UNITY_EDITOR_OSX
+        return Application.HasUserAuthorization(UserAuthorization.Microphone);
+#elif UNITY_ANDROID
+        return Permission.HasUserAuthorizedPermission(Permission.Microphone);
+#else
+        return true;
+#endif
+    }
+
+    public void RequestMiroPhonePermission(Action<string> callback)
+    {
+#if UNITY_IOS || UNITY_EDITOR_OSX
+        StartCoroutine(RequestIOSPermission(callback));
+#elif UNITY_ANDROID
+        StartCoroutine(RequestAndroidPermission(callback));
+#else
+        callback?.Invoke(CaptureStat.PermissionGranted.ToString());
+#endif
+    }
+
+    public float GetMicroPhoneVolume()
+    {
+        if (Microphone.IsRecording(null) && goAudioSource != null)
+        {
+            return goAudioSource.volume;
+        }
+
+        return 0;
+    }
+
+    #endregion //Public Methods
+
+    [Button]
+    public void LoadReference()
+    {
+        try
+        {
+            // private static readonly string dumpDataDir = "DumpedSpectrumSamples";
+            var files = Directory.GetFiles(Path.Combine(Application.persistentDataPath, dumpDataDir), "*.data", SearchOption.TopDirectoryOnly);
+            
+            Accumulator accumulator = new Accumulator(referenceSamples.Length);
+            float[] tempSamples = null;
+            
+            foreach (var file in files)
+            {
+                var fileName = Path.GetFileName(file);
+                tempSamples = accumulator.addDateValue(LoadSampleData(fileName));
+            }
+
+            if (tempSamples != null)
+            {
+                referenceSamples = this.tempSamples;
+            }
+            
+            recordedRenderer?.Draw(referenceSamples);
+        }
+        catch (Exception e)
+        {
+            Debug.LogException(e);
+        }
+    }
+
+    #region Priviate Methods
+
+    
+
+    // Start is called before the first frame update
+    void InitMicroPhone()
+    {
+        if (micConnected)
+        {
+            return;
+        }
+
         if (Microphone.devices.Length <= 0)
         {
             //Throw a warning message at the console if there isn't    
@@ -59,52 +165,8 @@ public class MicBlowCapture : MonoBehaviour
         SetupSamplesBuffer();
     }
 
-    private bool isCapturing = false;
-    public enum CaptureStat
-    {
-        None,
-        MicBlowDetected,
-        CanNotFindMicroPhone,
-        MicroPhoneIsBusy,
-        AudioSourceMissing,
-        PermissionDenied,
-        PermissionGranted,
-        PermissionDeniedAndDontAskAgain,
-    }
 
-    public void StartCapture(Action<string> callback, bool record = false)
-    {
-        if (!isCapturing)
-        {
-            Debug.Log("StartCapture");
-            StartCoroutine(Capture(callback, record));
-        }
-        else
-        {
-            Debug.LogWarning("Is isCapturing...");
-        }
-    }
-
-    public void StopCapture()
-    {
-        Debug.Log("StopCapture");
-        isCapturing = false;
-    }
-
-    [Button]
-    public void LoadReference()
-    {
-        try
-        {
-            referenceSamples = LoadSampleData("lastDumpData.data");
-            recordedRenderer?.Draw(referenceSamples);
-        }
-        catch (Exception e)
-        {
-            Debug.LogException(e);
-        }
-    }
-
+    private static readonly string dumpDataDir = "DumpedSpectrumSamples";
     static void SaveSampleData(float[] data, string fileName)
     {
         if (data == null || data.Length == 0)
@@ -112,7 +174,7 @@ public class MicBlowCapture : MonoBehaviour
             return;
         }
 
-        var savePath = Path.Combine(Application.persistentDataPath, fileName);
+        var savePath = Path.Combine(Application.persistentDataPath, dumpDataDir, fileName);
         if (File.Exists(savePath))
         {
             File.Delete(savePath);
@@ -125,7 +187,7 @@ public class MicBlowCapture : MonoBehaviour
     {
         try
         {
-            var content = File.ReadAllText(Path.Combine(Application.persistentDataPath, fileName), Encoding.UTF8);
+            var content = File.ReadAllText(Path.Combine(Application.persistentDataPath, dumpDataDir, fileName), Encoding.UTF8);
             return JsonUtility.FromJson<float[]>(content);
         }
         catch (Exception e)
@@ -139,31 +201,24 @@ public class MicBlowCapture : MonoBehaviour
     IEnumerator RequestAndroidPermission(Action<string> callback)
     {
         CaptureStat stat = CaptureStat.None;
-        
+
         var callbacks = new PermissionCallbacks();
         callbacks.PermissionDenied += s => { stat = CaptureStat.PermissionDenied; };
         callbacks.PermissionGranted += s => { stat = CaptureStat.PermissionGranted; };
         callbacks.PermissionDeniedAndDontAskAgain += s => { stat = CaptureStat.PermissionDeniedAndDontAskAgain; };
-        
+
         Permission.RequestUserPermission(Permission.Microphone, callbacks);
-        while (stat == CaptureStat.None) { yield return null; }
+        while (stat == CaptureStat.None)
+        {
+            yield return null;
+        }
+
         callback?.Invoke(stat.ToString());
     }
 #endif
 
-    
-    public bool HasPermission()
-    {
-#if UNITY_IOS || UNITY_EDITOR_OSX
-        return Application.HasUserAuthorization(UserAuthorization.Microphone);
-#elif UNITY_ANDROID
-        return Permission.HasUserAuthorizedPermission(Permission.Microphone);
-#else
-        return true;
-#endif
-    }
 
-    #if UNITY_IOS || UNITY_EDITOR_OSX
+#if UNITY_IOS || UNITY_EDITOR_OSX
     IEnumerator RequestIOSPermission(Action<string> callback)
     {
         if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
@@ -180,25 +235,14 @@ public class MicBlowCapture : MonoBehaviour
             callback?.Invoke(CaptureStat.PermissionGranted.ToString());
         }
     }
-    #endif
-
-    public void RequestMiroPhonePermission(Action<string> callback)
-    {
-#if UNITY_IOS || UNITY_EDITOR_OSX
-        StartCoroutine(RequestIOSPermission(callback));
-#elif UNITY_ANDROID
-        StartCoroutine(RequestAndroidPermission(callback));
-#else
-        callback?.Invoke(CaptureStat.PermissionGranted.ToString());
 #endif
-    }
-    
-    [SerializeField]
-    private TextMeshProUGUI detectMatchCountText;
-    
+
+
+    [SerializeField] private TextMeshProUGUI detectMatchCountText;
+
     IEnumerator Capture(Action<string> callback, bool record = false)
     {
-        _Start();
+        InitMicroPhone();
         if (!micConnected)
         {
             callback?.Invoke(CaptureStat.CanNotFindMicroPhone.ToString());
@@ -206,6 +250,7 @@ public class MicBlowCapture : MonoBehaviour
         }
 
         // Request Permission
+
         #region iOS
 
 #if UNITY_IOS
@@ -219,10 +264,12 @@ public class MicBlowCapture : MonoBehaviour
             callback?.Invoke(CaptureStat.PermissionDenied.ToString());
             yield break;
         }
-#endif 
+#endif
+
         #endregion
 
         #region Android
+
 #if UNITY_ANDROID
         if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
         {
@@ -231,13 +278,13 @@ public class MicBlowCapture : MonoBehaviour
 
         if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
         {
-             callback?.Invoke(CaptureStat.PermissionDenied.ToString());
-             yield break;           
+            callback?.Invoke(CaptureStat.PermissionDenied.ToString());
+            yield break;
         }
-#endif    
+#endif
+
         #endregion
-        
-        
+
 
         if (Microphone.IsRecording(null))
         {
@@ -280,15 +327,15 @@ public class MicBlowCapture : MonoBehaviour
         {
             _accumulator = null;
         }
-        
+
         int detectMatchCount = 0;
         bool blowDetected = false;
-        
+
         if (detectMatchCountText != null)
         {
             detectMatchCountText.text = "";
         }
-        
+
         if (varianceText != null)
         {
             varianceText.text = "";
@@ -311,7 +358,7 @@ public class MicBlowCapture : MonoBehaviour
                 }
 
                 Debug.Log($"detectMatchCount: {detectMatchCount}");
-                blowDetected = detectMatchCount >= varReferenceMatchCount;               
+                blowDetected = detectMatchCount >= varReferenceMatchCount;
             }
 
 
@@ -329,7 +376,7 @@ public class MicBlowCapture : MonoBehaviour
         if (record)
         {
             referenceSamples = spectrumSamples.ToArray();
-            SaveSampleData(referenceSamples, "lastDumpData.data");
+            SaveSampleData(referenceSamples, $"dump{DateTime.UtcNow:HH:mm:ss zz}.data");
             recordedRenderer?.Draw(referenceSamples);
         }
 
@@ -439,9 +486,8 @@ public class MicBlowCapture : MonoBehaviour
 
     [SerializeField, Range(0, 20)] private int varReferenceMatchCount = 1;
 
-    [SerializeField]
-    private TextMeshProUGUI varianceText;
-    
+    [SerializeField] private TextMeshProUGUI varianceText;
+
     bool DetectBlow()
     {
         if (spectrumSamples != null && referenceSamples != null && spectrumSamples.Length == referenceSamples.Length)
@@ -453,16 +499,19 @@ public class MicBlowCapture : MonoBehaviour
 
             var m = tempSamples.Sum() / tempSamples.Length;
             // var v = tempSamples.Select(f => Mathf.Pow(f - m, 2)).Sum() / tempSamples.Length;
-            var v = tempSamples.Select(f => (f-m)*(f-m)).Sum() / tempSamples.Length;
+            var v = tempSamples.Select(f => (f - m) * (f - m)).Sum() / tempSamples.Length;
             v *= 1000000;
             Debug.Log($"variance: {v:R}");
             if (varianceText != null)
             {
                 varianceText.text = v.ToString("R");
             }
+
             return v <= varReference;
         }
 
         return false;
     }
+    
+    #endregion
 }
