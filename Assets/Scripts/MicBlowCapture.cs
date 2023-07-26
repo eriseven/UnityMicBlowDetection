@@ -93,17 +93,27 @@ public class MicBlowCapture : MonoBehaviour
         callback?.Invoke(CaptureStat.PermissionGranted.ToString());
 #endif
     }
-
+    
+    private static int VOLUME_DATA_LENGTH = 128 / 2; 
+    private float[] volumeDataBuff = new float[VOLUME_DATA_LENGTH];
     public float GetMicroPhoneVolume()
     {
-        if (Microphone.IsRecording(null) && goAudioSource != null)
+        if (Microphone.IsRecording(null) && goAudioSource != null && goAudioSource.clip != null)
         {
-            return goAudioSource.volume;
+            var offset = Microphone.GetPosition(null) - VOLUME_DATA_LENGTH + 1;
+            Debug.Log($"Microphone record offset: {offset}");
+            if (offset < 0)
+            {
+                return 0;
+            }
+            
+            goAudioSource.clip.GetData(volumeDataBuff, offset);
+            return volumeDataBuff.Select(Mathf.Abs).Max() * 100;
         }
 
         return 0;
     }
-
+    
     #endregion //Public Methods
 
     [Button]
@@ -181,13 +191,23 @@ public class MicBlowCapture : MonoBehaviour
             return;
         }
 
-        var savePath = Path.Combine(Application.persistentDataPath, dumpDataDir, fileName);
+        var saveDir = Path.Combine(Application.persistentDataPath, dumpDataDir);
+        if (!Directory.Exists(saveDir))
+        {
+            Directory.CreateDirectory(saveDir);
+        }
+        
+        var savePath = Path.Combine(saveDir, fileName);
+        
         if (File.Exists(savePath))
         {
             File.Delete(savePath);
         }
 
-        File.WriteAllText(savePath, JsonUtility.ToJson(data), Encoding.UTF8);
+        var saveObject = new MicroPhoneDumpData();
+        saveObject.dumpData = data;
+        
+        File.WriteAllText(savePath, JsonUtility.ToJson(saveObject), Encoding.UTF8);
     }
 
     static float[] LoadSampleData(string fileName)
@@ -195,7 +215,7 @@ public class MicBlowCapture : MonoBehaviour
         try
         {
             var content = File.ReadAllText(Path.Combine(Application.persistentDataPath, dumpDataDir, fileName), Encoding.UTF8);
-            return JsonUtility.FromJson<float[]>(content);
+            return JsonUtility.FromJson<MicroPhoneDumpData>(content).dumpData;
         }
         catch (Exception e)
         {
@@ -383,7 +403,7 @@ public class MicBlowCapture : MonoBehaviour
         if (record)
         {
             referenceSamples = spectrumSamples.ToArray();
-            SaveSampleData(referenceSamples, $"dump{DateTime.UtcNow:HH:mm:ss zz}.data");
+            SaveSampleData(referenceSamples, $"dump{DateTime.UtcNow:HH_mm_ss}.data");
             recordedRenderer?.Draw(referenceSamples);
         }
 
@@ -494,6 +514,7 @@ public class MicBlowCapture : MonoBehaviour
     [SerializeField, Range(0, 20)] private int varReferenceMatchCount = 1;
 
     [SerializeField] private TextMeshProUGUI varianceText;
+    
 
     bool DetectBlow()
     {

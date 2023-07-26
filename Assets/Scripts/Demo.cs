@@ -24,6 +24,8 @@ namespace UnityMicBlowDetection
 
         [SerializeField] private TextMeshProUGUI state;
 
+        [SerializeField] private TextMeshProUGUI microPhoneVolumeText;
+        
         // Start is called before the first frame update
         void Start()
         {
@@ -86,6 +88,18 @@ namespace UnityMicBlowDetection
             if (capture != null)
             {
                 DebugLogConsole.AddCommand("load", "load saved samples", capture.LoadReference);
+            }
+        }
+
+        private void Update()
+        {
+            if (Microphone.IsRecording(null) && capture != null)
+            {
+                var vol = capture.GetMicroPhoneVolume();
+                if (microPhoneVolumeText != null)
+                {
+                    microPhoneVolumeText.text = $"volume: {vol:R}"; //vol.ToString("R");
+                }
             }
         }
 
